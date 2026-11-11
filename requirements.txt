@@ -1,0 +1,43 @@
+# Advance AI Research Assistant — core Python dependencies
+# Install into the existing Conda environment: nlp
+# PyTorch is intentionally omitted to preserve the existing CUDA-enabled build.
+
+# Notebook / utilities
+jupyterlab
+ipykernel
+python-dotenv
+tqdm
+numpy
+pandas
+matplotlib
+
+# NLP and embeddings
+spacy
+nltk
+transformers
+sentence-transformers
+
+# PDF ingestion
+pymupdf
+pypdf
+
+# Retrieval and vector database
+chromadb
+rank-bm25
+
+# API backend and settings
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+python-multipart
+
+# Local Ollama client
+ollama
+
+# Testing and HTTP test client
+pytest
+httpx
+
+# Code quality
+ruff

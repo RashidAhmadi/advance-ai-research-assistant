@@ -1,0 +1,15 @@
+# Optional integrations. Install only when implementing these features.
+
+# Cloud LLM provider SDKs
+google-genai
+groq
+openai
+
+# Optional orchestration frameworks
+langchain
+langgraph
+
+# OCR for scanned PDFs
+pytesseract
+pdf2image
+Pillow
