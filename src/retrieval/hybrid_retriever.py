@@ -278,3 +278,39 @@ class HybridRetriever:
         )
 
         return final_results
+
+    def add_chunks(self, new_chunks: list[dict]) -> int:
+        """
+        Add newly uploaded document chunks to the BM25 corpus.
+    
+        Returns:
+            Number of newly added chunks.
+        """
+        if not new_chunks:
+            return 0
+    
+        # Avoid adding chunks that already exist.
+        existing_ids = {
+            chunk["chunk_id"] for chunk in self.chunks
+        }
+    
+        unique_chunks = [
+            chunk for chunk in new_chunks
+            if chunk["chunk_id"] not in existing_ids
+        ]
+    
+        if not unique_chunks:
+            return 0
+    
+        # Extend the existing corpus.
+        self.chunks.extend(unique_chunks)
+    
+        # Rebuild BM25 so the new documents become searchable.
+        self.tokenized_corpus = [
+            self.tokenize(chunk["text"])
+            for chunk in self.chunks
+        ]
+    
+        self.bm25 = BM25Okapi(self.tokenized_corpus)
+    
+        return len(unique_chunks)

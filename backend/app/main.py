@@ -8,7 +8,7 @@ import re
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
-
+from fastapi.middleware.cors import CORSMiddleware
 # ---------------------------------------------------------
 # Project imports
 # ---------------------------------------------------------
@@ -113,8 +113,17 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan
 )
-
-
+# Allow requests from the Next.js frontend.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # ---------------------------------------------------------
 # Request and response models
 # ---------------------------------------------------------
