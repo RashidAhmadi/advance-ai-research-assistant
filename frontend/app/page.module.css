@@ -1050,3 +1050,334 @@
     display: none;
   }
 }
+
+
+
+/* =========================================================
+   DOCUMENT MANAGEMENT — EDIT AND DELETE ACTIONS
+   ========================================================= */
+
+/* Document action buttons */
+
+.documentActions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex-shrink: 0;
+}
+
+.editButton,
+.deleteButton,
+.dangerButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 31px;
+  padding: 0 11px;
+  border-radius: 7px;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.editButton {
+  border: 1px solid #dce2f2;
+  background: #f7f8ff;
+  color: #586bd1;
+}
+
+.editButton:hover {
+  border-color: #aeb9ef;
+  background: #eef0ff;
+  color: #4054c1;
+}
+
+.deleteButton {
+  border: 1px solid #f1d9dc;
+  background: #fff7f7;
+  color: #c45a65;
+}
+
+.deleteButton:hover {
+  border-color: #e8b5bb;
+  background: #ffebed;
+  color: #b43e4b;
+}
+
+.editButton:disabled,
+.deleteButton:disabled,
+.dangerButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* =========================================================
+   MODAL — BACKDROP AND CONTAINER
+   ========================================================= */
+
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 20px;
+  background: rgba(18, 27, 45, 0.48);
+  backdrop-filter: blur(4px);
+
+  animation: modalFadeIn 0.2s ease;
+}
+
+.modal {
+  width: 100%;
+  max-width: 480px;
+  max-height: calc(100vh - 40px);
+  overflow-y: auto;
+
+  padding: 27px;
+  border: 1px solid #e7eaf1;
+  border-radius: 14px;
+  background: #ffffff;
+
+  box-shadow: 0 20px 60px rgba(20, 30, 55, 0.2);
+
+  animation: modalSlideIn 0.22s ease;
+}
+
+@keyframes modalFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes modalSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Modal header */
+
+.modalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 15px;
+
+  margin-bottom: 24px;
+}
+
+.modalHeader h2 {
+  margin: 0;
+  color: #263249;
+  font-size: 19px;
+  font-weight: 750;
+  letter-spacing: -0.4px;
+}
+
+.modalClose {
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+
+  border: 1px solid #edf0f5;
+  border-radius: 7px;
+  background: #f8f9fc;
+  color: #7d899c;
+
+  font-size: 20px;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.modalClose:hover {
+  border-color: #e3c6ca;
+  background: #fff0f1;
+  color: #c34c58;
+}
+
+.modalClose:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Modal form */
+
+.modalLabel {
+  display: block;
+  margin-bottom: 8px;
+
+  color: #47536a;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.modalInput {
+  width: 100%;
+  min-height: 42px;
+
+  padding: 0 12px;
+
+  border: 1px solid #dce2ed;
+  border-radius: 8px;
+  outline: none;
+
+  background: #fcfcff;
+  color: #344057;
+
+  font-family: inherit;
+  font-size: 12px;
+
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.modalInput:focus {
+  border-color: #7889e8;
+  box-shadow: 0 0 0 3px #7889e81c;
+}
+
+.modalHint {
+  margin: 10px 0 0;
+  color: #909bad;
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+/* Delete warning */
+
+.deleteWarning {
+  margin: 0;
+  padding: 15px;
+
+  border: 1px solid #f3dfe1;
+  border-radius: 8px;
+
+  background: #fff7f7;
+  color: #7e5960;
+
+  font-size: 11px;
+  line-height: 1.8;
+
+  overflow-wrap: anywhere;
+}
+
+.deleteWarning strong {
+  color: #b74653;
+  font-weight: 750;
+}
+
+/* Modal footer actions */
+
+.modalActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 9px;
+
+  margin-top: 23px;
+  padding-top: 17px;
+
+  border-top: 1px solid #edf0f5;
+}
+
+.modalActions button {
+  min-height: 37px;
+}
+
+.dangerButton {
+  min-height: 39px;
+  padding: 0 16px;
+
+  border: 1px solid #cf505c;
+  background: #cf505c;
+  color: #ffffff;
+
+  box-shadow: 0 4px 10px #cf505c20;
+}
+
+.dangerButton:hover:not(:disabled) {
+  border-color: #b83c49;
+  background: #b83c49;
+  transform: translateY(-1px);
+}
+
+/* Keyboard accessibility */
+
+.editButton:focus-visible,
+.deleteButton:focus-visible,
+.dangerButton:focus-visible,
+.modalClose:focus-visible {
+  outline: 3px solid #7889e866;
+  outline-offset: 2px;
+}
+
+/* =========================================================
+   RESPONSIVE DOCUMENT MANAGEMENT
+   ========================================================= */
+
+@media (max-width: 900px) {
+  .documentRow {
+    flex-wrap: wrap;
+  }
+
+  .documentActions {
+    margin-left: auto;
+  }
+}
+
+@media (max-width: 700px) {
+  .documentActions {
+    width: 100%;
+    justify-content: flex-end;
+    padding-top: 5px;
+  }
+
+  .editButton,
+  .deleteButton {
+    min-height: 34px;
+    padding: 0 13px;
+  }
+
+  .modal {
+    padding: 22px 18px;
+  }
+}
+
+@media (max-width: 390px) {
+  .modalBackdrop {
+    padding: 12px;
+  }
+
+  .modal {
+    padding: 19px 15px;
+  }
+
+  .modalHeader h2 {
+    font-size: 17px;
+  }
+
+  .modalActions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+
+  .modalActions button {
+    width: 100%;
+  }
+}

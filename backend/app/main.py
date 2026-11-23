@@ -141,7 +141,13 @@ class QueryRequest(BaseModel):
         ge=1,
         le=10
     )
+class RenameDocumentRequest(BaseModel):
 
+    filename: str = Field(
+        ...,
+        min_length=1,
+        max_length=255
+    )
 
 class SourceReference(BaseModel):
 
@@ -268,8 +274,295 @@ def list_documents():
         ),
         "documents": document_list
     }
+# ---------------------------------------------------------
+# Document management helpers
+# ---------------------------------------------------------
+
+def read_chunks_file():
+    """Load all indexed chunks from the JSONL file."""
+
+    if not CHUNKS_FILE.exists():
+        return []
+
+    chunks = []
+
+    with CHUNKS_FILE.open("r", encoding="utf-8") as file:
+        for line in file:
+            if line.strip():
+                chunks.append(json.loads(line))
+
+    return chunks
 
 
+def write_chunks_file(chunks):
+    """
+    Safely replace the JSONL file.
+
+    A temporary file is written first so that an interrupted
+    write is less likely to corrupt the existing corpus.
+    """
+
+    CHUNKS_FILE.parent.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    temporary_file = CHUNKS_FILE.with_suffix(".jsonl.tmp")
+
+    with temporary_file.open("w", encoding="utf-8") as file:
+        for chunk in chunks:
+            file.write(
+                json.dumps(chunk, ensure_ascii=False) + "\n"
+            )
+
+    temporary_file.replace(CHUNKS_FILE)
+
+
+def validate_pdf_filename(filename: str) -> str:
+    """Validate and normalize a display filename."""
+
+    filename = filename.strip()
+
+    if not filename:
+        raise HTTPException(
+            status_code=400,
+            detail="A filename is required."
+        )
+
+    # Prevent directory traversal and path-based filenames.
+    if "/" in filename or "\\" in filename:
+        raise HTTPException(
+            status_code=400,
+            detail="Please provide a filename without a directory path."
+        )
+
+    if Path(filename).suffix.lower() != ".pdf":
+        raise HTTPException(
+            status_code=400,
+            detail="The filename must have a .pdf extension."
+        )
+
+    if len(filename) > 255:
+        raise HTTPException(
+            status_code=400,
+            detail="The filename must not exceed 255 characters."
+        )
+
+    return filename
+
+# ---------------------------------------------------------
+# Rename an indexed document
+# ---------------------------------------------------------
+
+@app.patch("/documents/{document_id}")
+def rename_document(
+    document_id: str,
+    request: RenameDocumentRequest
+):
+    """
+    Rename a document in the library.
+
+    The document ID, chunks, embeddings, and original
+    uploaded PDF storage name remain unchanged.
+    """
+
+    if hybrid_retriever is None or vector_store is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Document management components are not ready."
+        )
+
+    new_filename = validate_pdf_filename(request.filename)
+
+    chunks = read_chunks_file()
+
+    document_chunks = [
+        chunk
+        for chunk in chunks
+        if chunk.get("document_id") == document_id
+    ]
+
+    if not document_chunks:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found."
+        )
+
+    old_filename = document_chunks[0]["filename"]
+
+    if old_filename == new_filename:
+        return {
+            "status": "success",
+            "message": "The filename has not changed.",
+            "document_id": document_id,
+            "filename": new_filename
+        }
+
+    # Update the filename in the persistent JSONL corpus.
+    updated_chunks = []
+
+    for chunk in chunks:
+        updated_chunk = dict(chunk)
+
+        if updated_chunk.get("document_id") == document_id:
+            updated_chunk["filename"] = new_filename
+
+        updated_chunks.append(updated_chunk)
+
+    try:
+
+        write_chunks_file(updated_chunks)
+
+        # Update the filename metadata in ChromaDB.
+        updated_vectors = vector_store.update_document_filename(
+            document_id=document_id,
+            new_filename=new_filename
+        )
+
+        if updated_vectors == 0:
+            raise RuntimeError(
+                "No matching vectors were found in ChromaDB."
+            )
+
+        # Update the in-memory BM25 corpus.
+        for chunk in hybrid_retriever.chunks:
+            if chunk.get("document_id") == document_id:
+                chunk["filename"] = new_filename
+
+        return {
+            "status": "success",
+            "message": "Document renamed successfully.",
+            "document_id": document_id,
+            "old_filename": old_filename,
+            "new_filename": new_filename,
+            "updated_vectors": updated_vectors
+        }
+
+    except Exception as error:
+
+        # Restore the original JSONL corpus if the operation fails.
+        try:
+            write_chunks_file(chunks)
+        except Exception as rollback_error:
+            print(
+                "Rename rollback failed:",
+                rollback_error
+            )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Document rename failed: {str(error)}"
+        ) from error
+# ---------------------------------------------------------
+# Delete an indexed document
+# ---------------------------------------------------------
+
+@app.delete("/documents/{document_id}")
+def delete_document(document_id: str):
+    """
+    Delete a document from:
+
+    1. Persistent JSONL chunks
+    2. ChromaDB vector collection
+    3. In-memory BM25 index
+    4. Uploaded PDF storage, if applicable
+
+    Original PDFs outside data/uploads are not deleted.
+    """
+
+    if hybrid_retriever is None or vector_store is None:
+        raise HTTPException(
+            status_code=503,
+            detail="Document management components are not ready."
+        )
+
+    chunks = read_chunks_file()
+
+    document_chunks = [
+        chunk
+        for chunk in chunks
+        if chunk.get("document_id") == document_id
+    ]
+
+    if not document_chunks:
+        raise HTTPException(
+            status_code=404,
+            detail="Document not found."
+        )
+
+    filename = document_chunks[0]["filename"]
+
+    remaining_chunks = [
+        chunk
+        for chunk in chunks
+        if chunk.get("document_id") != document_id
+    ]
+
+    removed_chunk_count = len(document_chunks)
+
+    try:
+
+        # 1. Update the persistent JSONL corpus.
+        write_chunks_file(remaining_chunks)
+
+        # 2. Delete all corresponding vectors from ChromaDB.
+        deleted_vectors = vector_store.delete_document(
+            document_id=document_id
+        )
+
+        if deleted_vectors == 0:
+            raise RuntimeError(
+                "No matching vectors were found in ChromaDB."
+            )
+
+    except Exception as error:
+
+        # Restore JSONL if vector deletion fails.
+        try:
+            write_chunks_file(chunks)
+        except Exception as rollback_error:
+            print(
+                "Delete rollback failed:",
+                rollback_error
+            )
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Document deletion failed: {str(error)}"
+        ) from error
+
+    # 3. Remove the document from the in-memory BM25 index.
+    removed_from_bm25 = hybrid_retriever.remove_document(
+        document_id
+    )
+
+    # 4. Delete stored uploaded PDF copies, if present.
+    deleted_files = 0
+
+    stored_files = list(
+        UPLOAD_DIR.glob(f"{document_id}_*.pdf")
+    )
+
+    for stored_file in stored_files:
+        try:
+            stored_file.unlink()
+            deleted_files += 1
+        except OSError as error:
+            print(
+                f"Could not delete uploaded PDF {stored_file}:",
+                error
+            )
+
+    return {
+        "status": "success",
+        "message": "Document deleted successfully.",
+        "document_id": document_id,
+        "filename": filename,
+        "removed_chunks": removed_chunk_count,
+        "deleted_vectors": deleted_vectors,
+        "removed_from_bm25": removed_from_bm25,
+        "deleted_uploaded_files": deleted_files
+    }
 # ---------------------------------------------------------
 # Research question endpoint
 # ---------------------------------------------------------

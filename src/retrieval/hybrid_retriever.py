@@ -98,25 +98,33 @@ class HybridRetriever:
         """Convert text into lowercase word tokens."""
         return re.findall(r"\b\w+\b", text.lower())
 
+    
     def bm25_search(
         self,
         query: str,
         top_k: int = BM25_TOP_K
     ) -> list:
         """Retrieve passages using BM25 keyword matching."""
-
+    
+        # Check whether the BM25 index contains documents.
+        if not self.chunks or self.bm25 is None:
+            return []
+    
+        # Tokenize the user's search query.
         query_tokens = self.tokenize(query)
-
+    
+        # Calculate BM25 relevance scores.
         scores = self.bm25.get_scores(query_tokens)
-
+    
+        # Select the highest-scoring chunks.
         ranked_indices = scores.argsort()[::-1][:top_k]
-
+    
         results = []
-
+    
         for index in ranked_indices:
-
+    
             chunk = self.chunks[index]
-
+    
             results.append({
                 "chunk_id": chunk["chunk_id"],
                 "score": float(scores[index]),
@@ -128,7 +136,7 @@ class HybridRetriever:
                     "chunk_index": chunk["chunk_index"]
                 }
             })
-
+    
         return results
 
     def semantic_search(
@@ -314,3 +322,33 @@ class HybridRetriever:
         self.bm25 = BM25Okapi(self.tokenized_corpus)
     
         return len(unique_chunks)
+
+    def remove_document(self, document_id: str) -> int:
+        """
+        Remove all chunks belonging to a document
+        from the in-memory BM25 corpus.
+        """
+    
+        original_count = len(self.chunks)
+    
+        self.chunks = [
+            chunk
+            for chunk in self.chunks
+            if chunk.get("document_id") != document_id
+        ]
+    
+        removed_count = original_count - len(self.chunks)
+    
+        # Rebuild the BM25 index after removing the chunks.
+        self.tokenized_corpus = [
+            self.tokenize(chunk["text"])
+            for chunk in self.chunks
+        ]
+    
+        self.bm25 = (
+            BM25Okapi(self.tokenized_corpus)
+            if self.tokenized_corpus
+            else None
+        )
+    
+        return removed_count

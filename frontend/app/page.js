@@ -61,6 +61,15 @@ export default function Home() {
 
   const [backendStatus, setBackendStatus] = useState("checking");
 
+  // Document management dialog and action state.
+  const [editingDocument, setEditingDocument] = useState(null);
+  const [editingFilename, setEditingFilename] = useState("");
+  const [savingRename, setSavingRename] = useState(false);
+  const [deletingDocument, setDeletingDocument] = useState(null);
+  const [deleting, setDeleting] = useState(false);
+  const [managementMessage, setManagementMessage] = useState("");
+  const [managementError, setManagementError] = useState("");
+
   async function loadDocuments() {
     setLoadingDocuments(true);
     setDocumentError("");
@@ -182,6 +191,113 @@ export default function Home() {
       setUploadError(error.message || "Document upload failed.");
     } finally {
       setUploading(false);
+    }
+  }
+
+  function openRenameDialog(document) {
+    setEditingDocument(document);
+    setEditingFilename(document.filename);
+    setManagementMessage("");
+    setManagementError("");
+  }
+
+  function closeRenameDialog() {
+    if (savingRename) return;
+    setEditingDocument(null);
+    setEditingFilename("");
+  }
+
+  async function handleRenameDocument(event) {
+    event.preventDefault();
+
+    if (!editingDocument || savingRename) return;
+
+    const filename = editingFilename.trim();
+
+    if (!filename) {
+      setManagementError("Please enter a filename.");
+      return;
+    }
+
+    if (!filename.toLowerCase().endsWith(".pdf")) {
+      setManagementError("The filename must end with .pdf.");
+      return;
+    }
+
+    setSavingRename(true);
+    setManagementError("");
+    setManagementMessage("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/documents/${encodeURIComponent(editingDocument.document_id)}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ filename }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not rename the document.");
+      }
+
+      setEditingDocument(null);
+      setEditingFilename("");
+      setManagementMessage(data.message || "Document renamed successfully.");
+      await loadDocuments();
+    } catch (error) {
+      setManagementError(error.message || "Could not rename the document.");
+    } finally {
+      setSavingRename(false);
+    }
+  }
+
+  function openDeleteDialog(document) {
+    setDeletingDocument(document);
+    setManagementMessage("");
+    setManagementError("");
+  }
+
+  function closeDeleteDialog() {
+    if (deleting) return;
+    setDeletingDocument(null);
+  }
+
+  async function handleDeleteDocument() {
+    if (!deletingDocument || deleting) return;
+
+    setDeleting(true);
+    setManagementError("");
+    setManagementMessage("");
+
+    try {
+      const response = await fetch(
+        `${API_URL}/documents/${encodeURIComponent(deletingDocument.document_id)}`,
+        {
+          method: "DELETE",
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.detail || "Could not delete the document.");
+      }
+
+      setDeletingDocument(null);
+      setManagementMessage(
+        data.message || "Document deleted successfully."
+      );
+      await loadDocuments();
+    } catch (error) {
+      setManagementError(error.message || "Could not delete the document.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -539,10 +655,22 @@ export default function Home() {
                   />
                 </div>
 
+                {managementMessage && (
+                  <div className={styles.successMessage}>
+                    ✓ {managementMessage}
+                  </div>
+                )}
+                {managementError && (
+                  <div className={styles.errorMessage}>{managementError}</div>
+                )}
+
                 <DocumentList
                   documents={filteredDocuments}
                   loading={loadingDocuments}
                   error={documentError}
+                  showActions
+                  onEdit={openRenameDialog}
+                  onDelete={openDeleteDialog}
                 />
               </section>
             </>
@@ -684,6 +812,143 @@ export default function Home() {
           )}
         </div>
 
+        {editingDocument && (
+          <div
+            className={styles.modalBackdrop}
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeRenameDialog();
+            }}
+          >
+            <section
+              className={styles.modal}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="rename-dialog-title"
+            >
+              <div className={styles.modalHeader}>
+                <div>
+                  <div className={styles.eyebrow}>DOCUMENT MANAGEMENT</div>
+                  <h2 id="rename-dialog-title">Rename document</h2>
+                </div>
+                <button
+                  type="button"
+                  className={styles.modalClose}
+                  onClick={closeRenameDialog}
+                  disabled={savingRename}
+                  aria-label="Close dialog"
+                >
+                  ×
+                </button>
+              </div>
+
+              <form onSubmit={handleRenameDocument}>
+                <label className={styles.modalLabel} htmlFor="document-filename">
+                  PDF filename
+                </label>
+                <input
+                  id="document-filename"
+                  className={styles.modalInput}
+                  type="text"
+                  value={editingFilename}
+                  onChange={(event) => setEditingFilename(event.target.value)}
+                  maxLength={255}
+                  autoFocus
+                />
+                <p className={styles.modalHint}>
+                  This changes the filename shown in your library. Indexed
+                  content and document references remain unchanged.
+                </p>
+
+                {managementError && (
+                  <div className={styles.errorMessage}>{managementError}</div>
+                )}
+
+                <div className={styles.modalActions}>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={closeRenameDialog}
+                    disabled={savingRename}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className={styles.primaryButton}
+                    disabled={savingRename || !editingFilename.trim()}
+                  >
+                    {savingRename ? "Saving..." : "Save changes"}
+                  </button>
+                </div>
+              </form>
+            </section>
+          </div>
+        )}
+
+        {deletingDocument && (
+          <div
+            className={styles.modalBackdrop}
+            onMouseDown={(event) => {
+              if (event.target === event.currentTarget) closeDeleteDialog();
+            }}
+          >
+            <section
+              className={styles.modal}
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="delete-dialog-title"
+            >
+              <div className={styles.modalHeader}>
+                <div>
+                  <div className={styles.eyebrow}>DOCUMENT MANAGEMENT</div>
+                  <h2 id="delete-dialog-title">Delete document?</h2>
+                </div>
+                <button
+                  type="button"
+                  className={styles.modalClose}
+                  onClick={closeDeleteDialog}
+                  disabled={deleting}
+                  aria-label="Close dialog"
+                >
+                  ×
+                </button>
+              </div>
+
+              <p className={styles.deleteWarning}>
+                You are about to permanently remove{" "}
+                <strong>{deletingDocument.filename}</strong> from your
+                indexed library, including its chunks and vectors.
+                {deletingDocument.is_uploaded
+                  ? " Its uploaded PDF copy will also be deleted."
+                  : " The original PDF outside the uploads folder will not be deleted."}
+              </p>
+
+              {managementError && (
+                <div className={styles.errorMessage}>{managementError}</div>
+              )}
+
+              <div className={styles.modalActions}>
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={closeDeleteDialog}
+                  disabled={deleting}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  className={styles.dangerButton}
+                  onClick={handleDeleteDocument}
+                  disabled={deleting}
+                >
+                  {deleting ? "Deleting..." : "Delete document"}
+                </button>
+              </div>
+            </section>
+          </div>
+        )}
+
         <footer className={styles.mainFooter}>
           <span>Advance AI Research Assistant</span>
           <span>Scientific knowledge, made accessible.</span>
@@ -706,7 +971,14 @@ function StatCard({ label, value, detail, icon }) {
   );
 }
 
-function DocumentList({ documents, loading, error }) {
+function DocumentList({
+  documents,
+  loading,
+  error,
+  showActions = false,
+  onEdit,
+  onDelete,
+}) {
   if (loading) {
     return <div className={styles.emptyState}>Loading documents...</div>;
   }
@@ -748,6 +1020,27 @@ function DocumentList({ documents, loading, error }) {
             <span className={styles.statusDot} />
             Indexed
           </div>
+
+          {showActions && (
+            <div className={styles.documentActions}>
+              <button
+                type="button"
+                className={styles.editButton}
+                onClick={() => onEdit?.(document)}
+                aria-label={`Rename ${document.filename}`}
+              >
+                Edit
+              </button>
+              <button
+                type="button"
+                className={styles.deleteButton}
+                onClick={() => onDelete?.(document)}
+                aria-label={`Delete ${document.filename}`}
+              >
+                Delete
+              </button>
+            </div>
+          )}
         </div>
       ))}
     </div>

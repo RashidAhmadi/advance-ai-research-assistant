@@ -130,3 +130,59 @@ class ChromaVectorStore:
             n_results=top_k,
             include=["documents", "metadatas", "distances"]
         )
+
+    def update_document_filename(
+        self,
+        document_id: str,
+        new_filename: str
+    ) -> int:
+        """
+        Update the filename metadata of all chunks
+        belonging to a document in ChromaDB.
+        """
+    
+        results = self.collection.get(
+            where={"document_id": document_id},
+            include=["metadatas"]
+        )
+    
+        ids = results.get("ids", [])
+        metadatas = results.get("metadatas", [])
+    
+        if not ids:
+            return 0
+    
+        updated_metadatas = []
+    
+        for metadata in metadatas:
+            updated_metadata = dict(metadata)
+            updated_metadata["filename"] = new_filename
+            updated_metadatas.append(updated_metadata)
+    
+        self.collection.update(
+            ids=ids,
+            metadatas=updated_metadatas
+        )
+    
+        return len(ids)
+    
+    
+    def delete_document(self, document_id: str) -> int:
+        """
+        Delete all vectors belonging to a document
+        from ChromaDB.
+        """
+    
+        results = self.collection.get(
+            where={"document_id": document_id},
+            include=[]
+        )
+    
+        ids = results.get("ids", [])
+    
+        if not ids:
+            return 0
+    
+        self.collection.delete(ids=ids)
+    
+        return len(ids)
