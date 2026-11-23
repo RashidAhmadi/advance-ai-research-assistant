@@ -178,6 +178,99 @@ def health_check():
 
 
 # ---------------------------------------------------------
+# Document management endpoint
+# ---------------------------------------------------------
+
+@app.get("/documents")
+def list_documents():
+    """
+    Return all indexed documents and their statistics.
+
+    Document information is reconstructed from the persistent
+    JSONL chunk collection. This means the document library
+    remains available after restarting the backend.
+    """
+
+    if not CHUNKS_FILE.exists():
+        return {
+            "document_count": 0,
+            "total_chunks": 0,
+            "total_pages": 0,
+            "documents": []
+        }
+
+    documents = {}
+
+    # Read the persistent chunk collection.
+    with CHUNKS_FILE.open("r", encoding="utf-8") as file:
+        for line in file:
+            if not line.strip():
+                continue
+
+            chunk = json.loads(line)
+
+            document_id = chunk["document_id"]
+
+            # Create a document entry the first time we
+            # encounter one of its chunks.
+            if document_id not in documents:
+                documents[document_id] = {
+                    "document_id": document_id,
+                    "filename": chunk["filename"],
+                    "pages": set(),
+                    "chunk_count": 0
+                }
+
+            # Collect unique page numbers and count chunks.
+            page_number = chunk.get("page_number")
+
+            if page_number is not None:
+                documents[document_id]["pages"].add(
+                    page_number
+                )
+
+            documents[document_id]["chunk_count"] += 1
+
+    # Convert the collected information into API records.
+    document_list = []
+
+    for document_id, document in documents.items():
+
+        # Uploaded PDFs are stored as:
+        # UUID_original_filename.pdf
+        stored_files = list(
+            UPLOAD_DIR.glob(f"{document_id}_*.pdf")
+        )
+
+        page_numbers = sorted(document["pages"])
+
+        document_list.append({
+            "document_id": document_id,
+            "filename": document["filename"],
+            "page_count": len(page_numbers),
+            "chunk_count": document["chunk_count"],
+            "is_uploaded": len(stored_files) > 0,
+            "status": "indexed"
+        })
+
+    # Display documents alphabetically.
+    document_list.sort(
+        key=lambda item: item["filename"].lower()
+    )
+
+    return {
+        "document_count": len(document_list),
+        "total_chunks": sum(
+            item["chunk_count"] for item in document_list
+        ),
+        "total_pages": sum(
+            item["page_count"] for item in document_list
+        ),
+        "documents": document_list
+    }
+
+
+# ---------------------------------------------------------
 # Research question endpoint
 # ---------------------------------------------------------
 
