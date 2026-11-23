@@ -5,6 +5,7 @@ import sys
 import json
 import uuid
 import re
+import ollama
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
 from pydantic import BaseModel, Field
@@ -37,6 +38,8 @@ from src.processing.text_processor import process_document
 # ---------------------------------------------------------
 
 UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
+OLLAMA_HOST = "http://localhost:11434"
+DEFAULT_LLM_MODEL = "qwen2.5:3b"
 
 CHUNKS_FILE = (
     PROJECT_ROOT
@@ -47,7 +50,6 @@ CHUNKS_FILE = (
 
 MAX_FILE_SIZE = 50 * 1024 * 1024  # 50 MB
 
-
 # ---------------------------------------------------------
 # Shared application components
 # ---------------------------------------------------------
@@ -56,7 +58,7 @@ rag_pipeline = None
 hybrid_retriever = None
 embedding_model = None
 vector_store = None
-
+llm_provider = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -65,6 +67,7 @@ async def lifespan(app: FastAPI):
     global hybrid_retriever
     global embedding_model
     global vector_store
+    global llm_provider
 
     UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -82,7 +85,8 @@ async def lifespan(app: FastAPI):
     )
 
     llm_provider = OllamaProvider(
-        model_name="qwen2.5:3b"
+        model_name=DEFAULT_LLM_MODEL,
+        host=OLLAMA_HOST
     )
 
     rag_pipeline = RAGPipeline(
@@ -98,6 +102,7 @@ async def lifespan(app: FastAPI):
     hybrid_retriever = None
     embedding_model = None
     vector_store = None
+    llm_provider = None
 
 
 # ---------------------------------------------------------
@@ -165,7 +170,13 @@ class QueryResponse(BaseModel):
     execution_time: float
     citation_warning: bool
 
+class LLMConfigRequest(BaseModel):
 
+    model: str = Field(
+        ...,
+        min_length=1,
+        max_length=150
+    )
 # ---------------------------------------------------------
 # Health endpoint
 # ---------------------------------------------------------
@@ -183,6 +194,130 @@ def health_check():
     }
 
 
+# ---------------------------------------------------------
+# LLM configuration and model management
+# ---------------------------------------------------------
+
+@app.get("/llm/config")
+def get_llm_config():
+    """Return the currently active language model."""
+
+    if llm_provider is None:
+        raise HTTPException(
+            status_code=503,
+            detail="LLM provider is not initialized."
+        )
+
+    return {
+        "provider": "ollama",
+        "model": llm_provider.model_name,
+        "host": OLLAMA_HOST
+    }
+
+
+@app.get("/llm/models")
+def list_ollama_models():
+    """Return all locally installed Ollama models."""
+
+    try:
+        client = ollama.Client(host=OLLAMA_HOST)
+        response = client.list()
+
+        models = []
+
+        for item in response.models:
+            model_name = (
+                getattr(item, "model", None)
+                or getattr(item, "name", None)
+            )
+
+            if model_name:
+                models.append(model_name)
+
+        return {
+            "provider": "ollama",
+            "models": sorted(set(models)),
+            "count": len(set(models))
+        }
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Could not retrieve Ollama models. "
+                "Please check whether Ollama is running. "
+                f"Details: {str(error)}"
+            )
+        ) from error
+
+
+@app.patch("/llm/config")
+def update_llm_config(request: LLMConfigRequest):
+    """Change the active Ollama model without restarting the backend."""
+
+    global llm_provider
+
+    if rag_pipeline is None:
+        raise HTTPException(
+            status_code=503,
+            detail="The RAG pipeline is not initialized."
+        )
+
+    model_name = request.model.strip()
+
+    if not model_name:
+        raise HTTPException(
+            status_code=400,
+            detail="A model name is required."
+        )
+
+    try:
+        # Check that the requested model is installed.
+        client = ollama.Client(host=OLLAMA_HOST)
+        response = client.list()
+
+        installed_models = {
+            getattr(item, "model", None)
+            or getattr(item, "name", None)
+            for item in response.models
+        }
+
+        if model_name not in installed_models:
+            raise HTTPException(
+                status_code=404,
+                detail=(
+                    f"Model '{model_name}' is not installed. "
+                    "Please select an installed Ollama model."
+                )
+            )
+
+        # Create the new provider.
+        new_provider = OllamaProvider(
+            model_name=model_name,
+            host=OLLAMA_HOST
+        )
+
+        # Update the shared provider and RAG pipeline.
+        llm_provider = new_provider
+        rag_pipeline.llm_provider = new_provider
+
+        return {
+            "status": "success",
+            "message": "LLM model changed successfully.",
+            "provider": "ollama",
+            "model": model_name
+        }
+
+    except HTTPException:
+        raise
+
+    except Exception as error:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Could not change the LLM model: {str(error)}"
+        ) from error
+
+    
 # ---------------------------------------------------------
 # Document management endpoint
 # ---------------------------------------------------------

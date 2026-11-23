@@ -60,6 +60,16 @@ export default function Home() {
   const [questionError, setQuestionError] = useState("");
 
   const [backendStatus, setBackendStatus] = useState("checking");
+    // LLM model configuration.
+    const [llmConfig, setLlmConfig] = useState(null);
+    const [llmModels, setLlmModels] = useState([]);
+    const [selectedLlmModel, setSelectedLlmModel] = useState("");
+    
+    const [loadingLlm, setLoadingLlm] = useState(false);
+    const [changingLlm, setChangingLlm] = useState(false);
+    
+    const [llmMessage, setLlmMessage] = useState("");
+    const [llmError, setLlmError] = useState("");
 
   // Document management dialog and action state.
   const [editingDocument, setEditingDocument] = useState(null);
@@ -105,11 +115,104 @@ export default function Home() {
     }
   }
 
-  useEffect(() => {
-    loadDocuments();
-    checkBackend();
-  }, []);
+    
+    async function loadLlmSettings() {
+      setLoadingLlm(true);
+      setLlmError("");
+    
+      try {
+        const [configResponse, modelsResponse] = await Promise.all([
+          fetch(`${API_URL}/llm/config`),
+          fetch(`${API_URL}/llm/models`)
+        ]);
+    
+        const configData = await configResponse.json();
+        const modelsData = await modelsResponse.json();
+    
+        if (!configResponse.ok) {
+          throw new Error(
+            configData.detail || "Could not load active LLM configuration."
+          );
+        }
+    
+        if (!modelsResponse.ok) {
+          throw new Error(
+            modelsData.detail || "Could not load available models."
+          );
+        }
+    
+        setLlmConfig(configData);
+        setLlmModels(modelsData.models || []);
+        setSelectedLlmModel(configData.model || "");
+    
+      } catch (error) {
+        setLlmError(error.message || "Could not load LLM settings.");
+      } finally {
+        setLoadingLlm(false);
+      }
+    }
 
+    
+    async function handleChangeLlmModel() {
+      if (!selectedLlmModel || changingLlm) return;
+    
+      if (selectedLlmModel === llmConfig?.model) {
+        setLlmMessage("This model is already active.");
+        setLlmError("");
+        return;
+      }
+    
+      setChangingLlm(true);
+      setLlmMessage("");
+      setLlmError("");
+    
+      try {
+        const response = await fetch(`${API_URL}/llm/config`, {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            model: selectedLlmModel
+          })
+        });
+    
+        const data = await response.json();
+    
+        if (!response.ok) {
+          throw new Error(
+            data.detail || "Could not change the language model."
+          );
+        }
+    
+        setLlmConfig({
+          provider: data.provider,
+          model: data.model,
+          host: llmConfig?.host
+        });
+    
+        setSelectedLlmModel(data.model);
+    
+        setLlmMessage(
+          `Active model changed to ${data.model}.`
+        );
+    
+      } catch (error) {
+        setLlmError(
+          error.message || "Could not change the language model."
+        );
+      } finally {
+        setChangingLlm(false);
+      }
+    }
+
+
+  useEffect(() => {
+      loadDocuments();
+      checkBackend();
+      loadLlmSettings();
+    }, []);
+    
   const filteredDocuments = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
 
@@ -689,9 +792,104 @@ export default function Home() {
                 </div>
                 <div className={styles.modelIndicator}>
                   <span className={styles.statusDot} />
-                  Local AI · Ollama
+                  Ollama · {llmConfig?.model || "Loading model..."}
                 </div>
               </section>
+
+            
+            <section className={styles.panel}>
+              <div className={styles.panelHeader}>
+                <div>
+                  <h2>Language model</h2>
+                  <p>
+                    Select the AI model used to generate research answers.
+                  </p>
+                </div>
+            
+                <button
+                  type="button"
+                  className={styles.secondaryButton}
+                  onClick={loadLlmSettings}
+                  disabled={loadingLlm || changingLlm}
+                >
+                  {loadingLlm ? "Loading..." : "↻ Refresh models"}
+                </button>
+              </div>
+            
+              <div className={styles.llmControls}>
+                <div className={styles.llmSelectGroup}>
+                  <label
+                    className={styles.modalLabel}
+                    htmlFor="llm-model-select"
+                  >
+                    Available Ollama models
+                  </label>
+            
+                  <select
+                    id="llm-model-select"
+                    className={styles.modalInput}
+                    value={selectedLlmModel}
+                    onChange={(event) => {
+                      setSelectedLlmModel(event.target.value);
+                      setLlmMessage("");
+                      setLlmError("");
+                    }}
+                    disabled={loadingLlm || changingLlm || llmModels.length === 0}
+                  >
+                    {llmModels.length === 0 && (
+                      <option value="">
+                        No models available
+                      </option>
+                    )}
+            
+                    {selectedLlmModel &&
+                      !llmModels.includes(selectedLlmModel) && (
+                        <option value={selectedLlmModel}>
+                          {selectedLlmModel}
+                        </option>
+                      )}
+            
+                    {llmModels.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+            
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={handleChangeLlmModel}
+                  disabled={
+                    loadingLlm ||
+                    changingLlm ||
+                    !selectedLlmModel ||
+                    selectedLlmModel === llmConfig?.model
+                  }
+                >
+                  {changingLlm ? "Changing model..." : "Apply model"}
+                </button>
+              </div>
+            
+              {llmConfig && (
+                <div className={styles.llmCurrentModel}>
+                  Active model: <strong>{llmConfig.model}</strong>
+                </div>
+              )}
+            
+              {llmMessage && (
+                <div className={styles.successMessage}>
+                  ✓ {llmMessage}
+                </div>
+              )}
+            
+              {llmError && (
+                <div className={styles.errorMessage}>
+                  {llmError}
+                </div>
+              )}
+            </section>
 
               <section className={styles.assistantPanel}>
                 <div className={styles.assistantWelcome}>
