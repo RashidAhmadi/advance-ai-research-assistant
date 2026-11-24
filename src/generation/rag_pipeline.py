@@ -207,20 +207,33 @@ ANSWER QUALITY AND RELEVANCE:
     # STEP 4: VALIDATE CITATION LABELS
     # ---------------------------------------------------------
 
+    
     @staticmethod
     def validate_citations(answer: str, source_map: dict) -> tuple:
-        """Validate citation labels against available sources."""
-
-        cited_labels = set(
-            re.findall(r"\[(S\d+)\]", answer)
+        """Validate individual and grouped citation labels."""
+    
+        # Find citation groups such as:
+        # [S1]
+        # [S1, S2]
+        # [S1, S2, S3]
+        citation_groups = re.findall(
+            r"\[((?:S\d+)(?:\s*,\s*S\d+)*)\]",
+            answer
         )
-
+    
+        # Extract all individual source labels.
+        cited_labels = set()
+    
+        for group in citation_groups:
+            cited_labels.update(
+                re.findall(r"S\d+", group)
+            )
+    
         valid_labels = set(source_map.keys())
-
+    
         invalid_labels = cited_labels - valid_labels
-
         valid_citations = cited_labels & valid_labels
-
+    
         return (
             sorted(
                 valid_citations,
@@ -231,23 +244,39 @@ ANSWER QUALITY AND RELEVANCE:
                 key=lambda label: int(label[1:])
             )
         )
+    
 
     @staticmethod
     def remove_invalid_citations(answer: str, invalid_labels: list) -> str:
-        """Remove citation labels that do not exist in source_map."""
-
-        for label in invalid_labels:
-
-            answer = re.sub(
-                rf"\[{re.escape(label)}\]",
-                "",
-                answer
-            )
-
+        """Remove invalid labels while preserving valid grouped citations."""
+    
+        invalid_set = set(invalid_labels)
+    
+        def clean_citation_group(match):
+    
+            labels = re.findall(r"S\d+", match.group(1))
+    
+            valid_labels = [
+                label for label in labels
+                if label not in invalid_set
+            ]
+    
+            if not valid_labels:
+                return ""
+    
+            return f"[{', '.join(valid_labels)}]"
+    
+        answer = re.sub(
+            r"\[((?:S\d+)(?:\s*,\s*S\d+)*)\]",
+            clean_citation_group,
+            answer
+        )
+    
         answer = re.sub(r"[ \t]{2,}", " ", answer)
         answer = re.sub(r" +([.,;:])", r"\1", answer)
-
+    
         return answer.strip()
+    
 
     # ---------------------------------------------------------
     # STEP 5: BUILD VERIFIED SOURCE LIST

@@ -39,6 +39,7 @@ from src.processing.text_processor import process_document
 # ---------------------------------------------------------
 
 UPLOAD_DIR = PROJECT_ROOT / "data" / "uploads"
+RAW_PDF_DIR = PROJECT_ROOT / "data" / "raw_pdfs"
 OLLAMA_HOST = "http://localhost:11434"
 DEFAULT_LLM_MODEL = "qwen2.5:3b"
 
@@ -414,37 +415,51 @@ def list_documents():
 # View an uploaded PDF
 # ---------------------------------------------------------
 
+
 @app.get("/documents/{document_id}/pdf")
 def view_document_pdf(document_id: str):
     """
-    Open an uploaded PDF in the browser using its document ID.
+    Serve uploaded PDFs and previously indexed legacy PDFs.
+
+    Uploaded PDFs:
+        data/uploads/{document_id}_{filename}.pdf
+
+    Legacy PDFs:
+        data/raw_pdfs/{document_id}.pdf
     """
 
-    # Validate the UUID-based document ID.
-    if not re.fullmatch(r"[0-9a-f]{32}", document_id):
+    # Validate the ID to prevent path traversal.
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,200}", document_id):
         raise HTTPException(
             status_code=400,
             detail="Invalid document ID."
         )
 
-    # Find the corresponding uploaded PDF.
-    stored_files = list(
+    # 1. Check newly uploaded PDFs.
+    uploaded_files = list(
         UPLOAD_DIR.glob(f"{document_id}_*.pdf")
     )
 
-    if not stored_files:
-        raise HTTPException(
-            status_code=404,
-            detail="Uploaded PDF not found."
-        )
+    if uploaded_files:
+        pdf_path = uploaded_files[0]
 
-    # Return the PDF for inline browser viewing.
+    else:
+        # 2. Check previously indexed legacy PDFs.
+        pdf_path = RAW_PDF_DIR / f"{document_id}.pdf"
+
+        if not pdf_path.is_file():
+            raise HTTPException(
+                status_code=404,
+                detail="PDF file not found."
+            )
+
     return FileResponse(
-        path=stored_files[0],
+        path=pdf_path,
         media_type="application/pdf",
-        filename=stored_files[0].name,
+        filename=pdf_path.name,
         content_disposition_type="inline"
     )
+
 
 
 # ---------------------------------------------------------

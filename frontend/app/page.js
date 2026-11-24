@@ -3,7 +3,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import styles from "./page.module.css";
-
+import React from "react";
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
 
@@ -965,59 +965,74 @@ export default function Home() {
                       <p>{answer.question || question}</p>
                     </div>
 
-                   
+                                       
                     <div className={styles.answerText}>
                       {formatAnswer(answer.answer).map((paragraph, index) => (
                         <p key={index}>
                           {paragraph
-                            .split(/(\*\*\[S\d+\]\*\*|\[S\d+\])/g)
+                            .split(
+                              /(\*\*\[S\d+(?:,\s*S\d+)*\]\*\*|\[S\d+(?:,\s*S\d+)*\])/g
+                            )
                             .map((part, partIndex) => {
                               const isCitation =
-                                /^\*\*\[S\d+\]\*\*$|^\[S\d+\]$/.test(part);
+                                /^\*\*\[S\d+(?:,\s*S\d+)*\]\*\*$|^\[S\d+(?:,\s*S\d+)*\]$/.test(
+                                  part
+                                );
                     
                               if (!isCitation) {
                                 return part;
                               }
                     
-                              const citationLabel = part
-                                .replace(/\*/g, "")
-                                .replace(/\[|\]/g, "");
-                    
-                              const citedSource = answer.sources?.find(
-                                (source) => source.source_id === citationLabel
-                              )
-                    
-                              if (!citedSource?.document_id || !citedSource?.page_number) {
-                                return (
-                                  <span
-                                    key={partIndex}
-                                    className={styles.inlineCitation}
-                                  >
-                                    {part.replace(/\*/g, "")}
-                                  </span>
-                                );
-                              }
-                    
-                              const pdfUrl =
-                                `${API_URL}/documents/${citedSource.document_id}/pdf` +
-                                `#page=${citedSource.page_number}`;
+                              // Extract all source IDs, e.g. S2 and S5.
+                              const citationLabels = part.match(/S\d+/g) || [];
                     
                               return (
-                                <a
-                                  key={partIndex}
-                                  href={pdfUrl}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className={styles.inlineCitation}
-                                  title={`Open ${citedSource.filename}, page ${citedSource.page_number}`}
-                                >
-                                  {part.replace(/\*/g, "")}
-                                </a>
+                                <span key={partIndex}>
+                                  {citationLabels.map((citationLabel, citationIndex) => {
+                                    const citedSource = answer.sources?.find(
+                                      (source) => source.source_id === citationLabel
+                                    );
+                    
+                                    if (
+                                      !citedSource?.document_id ||
+                                      !citedSource?.page_number
+                                    ) {
+                                      return (
+                                        <span
+                                          key={citationLabel}
+                                          className={styles.inlineCitation}
+                                        >
+                                          [{citationLabel}]
+                                        </span>
+                                      );
+                                    }
+                    
+                                    const pdfUrl =
+                                      `${API_URL}/documents/${citedSource.document_id}/pdf` +
+                                      `#page=${citedSource.page_number}`;
+                    
+                                    return (
+                                      <React.Fragment key={citationLabel}>
+                                        {citationIndex > 0 && ", "}
+                                        <a
+                                          href={pdfUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className={styles.inlineCitation}
+                                          title={`Open ${citedSource.filename}, page ${citedSource.page_number}`}
+                                        >
+                                          [{citationLabel}]
+                                        </a>
+                                      </React.Fragment>
+                                    );
+                                  })}
+                                </span>
                               );
                             })}
                         </p>
                       ))}
                     </div>
+
 
                     {answer.citation_warning && (
                       <div className={styles.warningMessage}>
