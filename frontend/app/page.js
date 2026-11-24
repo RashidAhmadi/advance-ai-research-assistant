@@ -34,6 +34,15 @@ function getSourceDetails(source) {
   };
 }
 
+function formatAnswer(answer) {
+  if (!answer) return [];
+
+  return answer
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean);
+}
+
 export default function Home() {
   const [activePage, setActivePage] = useState("overview");
 
@@ -957,9 +966,23 @@ export default function Home() {
                     </div>
 
                     <div className={styles.answerText}>
-                      {answer.answer || "No answer was returned."}
+                      {formatAnswer(answer.answer).map((paragraph, index) => (
+                        <p key={index}>
+                          {paragraph.split(/(\*\*\[S\d+\]\*\*|\[S\d+\])/g).map((part, partIndex) =>
+                            /^\*\*\[S\d+\]\*\*$|^\[S\d+\]$/.test(part) ? (
+                              <span
+                                key={partIndex}
+                                className={styles.inlineCitation}
+                              >
+                                {part.replace(/\*/g, "")}
+                              </span>
+                            ) : (
+                              part
+                            )
+                          )}
+                        </p>
+                      ))}
                     </div>
-
                     {answer.citation_warning && (
                       <div className={styles.warningMessage}>
                         {answer.citation_warning}
@@ -969,7 +992,7 @@ export default function Home() {
                     {Array.isArray(answer.sources) &&
                       answer.sources.length > 0 && (
                         <div className={styles.sourcesSection}>
-                          <h3>Retrieved sources</h3>
+                          <h3>Cited references</h3>
                           <div className={styles.sourceList}>
                             {answer.sources.map((source, index) => {
                               const details = getSourceDetails(source);
@@ -984,8 +1007,8 @@ export default function Home() {
                                   }
                                 >
                                   <div className={styles.sourceNumber}>
-                                    S{index + 1}
-                                  </div>
+                                      {source.source_id || source.metadata?.source_id || `S${index + 1}`}
+                                    </div>
                                   <div className={styles.sourceDetails}>
                                     <strong>{details.filename}</strong>
                                     <span>
@@ -1149,6 +1172,7 @@ export default function Home() {
 
         <footer className={styles.mainFooter}>
           <span>Advance AI Research Assistant</span>
+        <span>Rashid Ahmadi</span>
           <span>Scientific knowledge, made accessible.</span>
         </footer>
       </main>

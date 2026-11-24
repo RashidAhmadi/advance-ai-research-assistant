@@ -8,6 +8,7 @@ import re
 import ollama
 
 from fastapi import FastAPI, HTTPException, UploadFile, File
+from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 from fastapi.middleware.cors import CORSMiddleware
 # ---------------------------------------------------------
@@ -155,12 +156,11 @@ class RenameDocumentRequest(BaseModel):
     )
 
 class SourceReference(BaseModel):
-
     source_id: str
+    document_id: str
     filename: str
     page_number: int
     chunk_id: str
-
 
 class QueryResponse(BaseModel):
 
@@ -409,6 +409,44 @@ def list_documents():
         ),
         "documents": document_list
     }
+
+# ---------------------------------------------------------
+# View an uploaded PDF
+# ---------------------------------------------------------
+
+@app.get("/documents/{document_id}/pdf")
+def view_document_pdf(document_id: str):
+    """
+    Open an uploaded PDF in the browser using its document ID.
+    """
+
+    # Validate the UUID-based document ID.
+    if not re.fullmatch(r"[0-9a-f]{32}", document_id):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid document ID."
+        )
+
+    # Find the corresponding uploaded PDF.
+    stored_files = list(
+        UPLOAD_DIR.glob(f"{document_id}_*.pdf")
+    )
+
+    if not stored_files:
+        raise HTTPException(
+            status_code=404,
+            detail="Uploaded PDF not found."
+        )
+
+    # Return the PDF for inline browser viewing.
+    return FileResponse(
+        path=stored_files[0],
+        media_type="application/pdf",
+        filename=stored_files[0].name,
+        content_disposition_type="inline"
+    )
+
+
 # ---------------------------------------------------------
 # Document management helpers
 # ---------------------------------------------------------
