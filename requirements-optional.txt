@@ -1,15 +1,26 @@
-# Optional integrations. Install only when implementing these features.
+# ============================================================
+# Advance AI Research Assistant
+# Optional integrations and extensions
+# ============================================================
+# Install only when implementing or using these features.
 
-# Cloud LLM provider SDKs
+# ------------------------------------------------------------
+# Cloud LLM providers
+# ------------------------------------------------------------
 google-genai
 groq
 openai
 
+# ------------------------------------------------------------
 # Optional orchestration frameworks
+# ------------------------------------------------------------
 langchain
 langgraph
 
+# ------------------------------------------------------------
 # OCR for scanned PDFs
+# ------------------------------------------------------------
 pytesseract
 pdf2image
 Pillow
+
